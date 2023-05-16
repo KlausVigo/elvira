@@ -79,6 +79,24 @@ conda config --add channels r
 conda install --yes --name elvira_env python=3 r-base=4 fastp trinity transrate transdecoder busco blast hmmer fastqc
 ```
 
+## Preparing sequences from NCBI
+
+**Step 0**: We download the sequence data for accession number *PRJNA549923* from NCBI and get the fastq file *SRR9331848.fastq.gz*. 
+We split the pair-end reads into two files and rename them so that they have the form we need below. 
+``` bash
+# Split the file
+seqkit split2 SRR9331848.fastq.gz -p 2 -O . -f
+[INFO] split seqs from SRR9331848.fastq.gz
+[INFO] split into 2 parts
+[INFO] write 27071929 sequences to file: SRR9331848.part_001.fastq.gz
+[INFO] write 27071929 sequences to file: SRR9331848.part_002.fastq.gz
+
+# rename the files
+mv SRR9331848.part_001.fastq.gz sample_1.fq.gz
+mv SRR9331848.part_002.fastq.gz sample_2.fq.gz
+```
+
+
 ## Reference generation
 
 **STEP 1**: Reads quality assessment. We checked the quality of our
