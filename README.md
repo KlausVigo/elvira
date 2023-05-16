@@ -82,7 +82,7 @@ conda install --yes --name elvira_env python=3 r-base=4 fastp trinity transrate 
 ## Preparing sequences from NCBI
 
 **Step 0**: We download the sequence data for accession number *PRJNA549923* from NCBI and get the fastq file *SRR9331848.fastq.gz*. 
-We split the pair-end reads into two files and rename them so that they have the form we need below. 
+We split the pair-end reads into two files using seqkit (Shen et al. 2016) and rename the files so we can use them below. 
 ``` bash
 # Split the file
 seqkit split2 SRR9331848.fastq.gz -p 2 -O . -f
