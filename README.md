@@ -248,24 +248,54 @@ blastp \
 
 ``` r
 # Attach the packages
-library(taxonomizr)
 library(Biostrings)
 library(stringr)
 library(readr)
 library(dplyr)
+library(taxize)
 
-# Prepare the database (do only the 1st time)
-getNamesAndNodes()
-getAccession2taxid(types = c("nucl_wgs", "nucl_gb", "prot"))
-read.names.sql("names.dmp", "accessionTaxa.sql")
-read.nodes.sql("nodes.dmp", "accessionTaxa.sql")
-read.accession2taxid(list.files(".", "accession2taxid.gz$"), "accessionTaxa.sql")
+# We use the taxize instead of the taxonomizr package
+# less memory
+
 
 # Load the transcripts sequences and the output from STEP 5A
+# setwd("/export/web/mol981/elysia/")
+
 prot_good <- readAAStringSet("sample.good.rmdup.faa")
 blast_out <- read_delim(file = "sample.good.rmdup.nr.tsv", col_names = FALSE) %>%
   select("X1", "X2") %>%
   rename("tx_name" = "X1", "nr_accs" = "X2")
+
+# get the accession nr
+tmp <- strsplit(nr_accs, "\\|")
+X2 <- sapply(tmp, function(x)x[[2]])
+# X4 <- sapply(tmp, function(x)x[[4]])
+
+# Extract the taxonomic information from the proteins ID
+
+classification(genbank2uid(id = X2[[1]]), db="ncbi")
+
+# check if length is as expected, might contain some missing values (NA)
+test2 <- classification(genbank2uid(id = X2), db="ncbi")
+
+
+# Helper function to extract the genus from a table
+fun <- function(x) {
+  if(length(x)==1) res <- data.frame(name=NA_character_, rank=NA_character_ ,
+                                     id=NA_character_)
+  else res <- x[x$rank=="genus",, drop=FALSE]
+  if(nrow(res)==0)res <- data.frame(name=NA_character_, rank=NA_character_ ,
+                                    id=NA_character_)
+  res
+}
+
+res <- data.frame(name=rep(NA_character_, 11410), rank=NA_character_ , id=NA_character_)
+for(i in seq_along(test2)) res[i,] <- fun(test2[[i]])
+res <- res[, -2]
+colnames(res) <-c("genus" , "id")
+prot_taxa <- cbind(res, nr_accs = nr_accs)
+
+
 
 # Extract the taxonomic information from the proteins ID
 prot_taxa <- tibble(
@@ -274,24 +304,38 @@ prot_taxa <- tibble(
   ) %>%
   bind_cols(getTaxonomy(nr_accs %>% pull(nr_egid), "accessionTaxa.sql"))
 
+
+nanr_accs <- unique(sort(blast_out %>% pull("nr_accs")))
+
+
 # Filter by Genus to keep only sea slugs
-prot_filt <- prot_taxa %>% 
-  filter(genus %in% c("Aplysia", "Elysia", "Plakobranchus")) %>%
+prot_taxa_filt <- prot_taxa %>%
+  filter(genus %in% c("Aplysia", "Elysia", "Biomphalaria",  "Plakobranchus")) %>%
   inner_join(blast_out)
-prot_filt <- prot_good[prot_filt %>% pull(tx_name)]
+
+# Filter sequences
+prot_filt <- prot_good[prot_taxa_filt$tx_name]
+
+
+# Shorten name to contain only identifier
+nam <- lapply(names(prot_good), function(x)strsplit(x, " ")[[1]][1]) |> unlist()
+names(prot_good) <- nam
+
 
 # Rename the final transcripts to handle simple names
 new_sqaccs <- paste0("SPNAME", str_pad(1:length(prot_good), width = nchar(length(prot_good)), pad = "0"))
-old_sqaccs <- names(prot_filt)
+old_sqaccs <- names(prot_good)
 accs_convr <- tibble("qseqid" = old_sqaccs, "qseqid_new" = new_sqaccs)
-names(prot_filt) <- new_sqaccs
 
 # Change the sequence accession in the alignment
 col_names <- c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore", "qlen", "slen", "qcovs")
 res_blast <- read_delim(file = "sample.good.rmdup.nr.tsv", col_names = col_names) %>%
   inner_join(accs_convr) %>%
-  select(!qseqid) %>%
-  rename("qseqid" = "qseqid_new")
+  select(!qseqid) 
+  
+# Find matching accession nr and filter data
+ind <- match(prot_taxa_filt$nr_accs , res_blast$sseqid)
+res_blast <- res_blast[ind, ]
 
 # Export the final transcriptome
 writeXStringSet(x = prot_filt, filepath = "sample.good.rmdup.slugs.faa", append = FALSE)
